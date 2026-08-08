@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Category {
+  BUG
+  ACCESS_REQUEST
+  BILLING
+  HARDWARE
+  GENERAL
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Status {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model Ticket {
+  id            String     @id @default(cuid())
+  title         String
+  description   String
+  requesterName String
+  requesterEmail String
+
+  category      Category
+  priority      Priority
+  status        Status     @default(OPEN)
+
+  // Raw AI classification output, kept for transparency/debugging
+  classifiedBy  String     @default("rule-based") // "rule-based" | "aws-comprehend"
+  confidence    Float?
+
+  assignee      String?
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
