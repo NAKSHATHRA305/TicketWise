@@ -1,108 +1,53 @@
-# TicketWise
+# TicketWise 🎫
 
-AI-assisted IT helpdesk ticket triage. Submit a ticket in plain English; it's
-automatically categorized and prioritized so the queue sorts itself.
+An AI-assisted IT helpdesk ticket triage system that categorizes and prioritizes support tickets automatically — no manual sorting required.
 
-**Stack:** Next.js 14 (App Router, TypeScript) · Tailwind · Prisma ·
-PostgreSQL on Neon · AWS Comprehend (optional AI enhancement) · deployed
-entirely on Vercel.
+🔗 **Live Demo:** [https://ticket-wise-mu.vercel.app/](https://ticket-wise-mu.vercel.app/)
 
-**Why Neon and not AWS RDS for the database:** RDS bills per hour the
-instance exists, so it's the one piece of AWS with a real expiration date
-(12-month free tier, then a recurring monthly charge whether you use it or
-not). Neon's free tier isn't a time-limited promo — it doesn't expire. AWS
-is still genuinely in this stack via Comprehend (and optionally S3), which
-bill per request instead of per hour, so idle cost is $0 indefinitely. Since
-Prisma just talks to whatever's in `DATABASE_URL`, none of the application
-code changes based on this choice.
+## What it does
 
-## How classification works
+Submit a ticket in plain English. The app scans the title and description, assigns a category (bug, access request, billing, hardware, general) and a priority (low → critical) based on urgency language, and sorts the queue automatically — cutting manual triage time to zero for the common case.
 
-Every ticket goes through `src/lib/classifier.ts`:
+## Tech Stack
 
-- **Default (zero setup):** a rule-based classifier scans the title/description
-  for keywords to assign a category (bug, access request, billing, hardware,
-  general) and scans for urgency language to assign a priority.
-- **With AWS Comprehend enabled:** the same rule-based pass runs first, then
-  Comprehend's sentiment analysis is used to bump priority up when the
-  requester's language reads as strongly negative/frustrated — a real AWS AI
-  service augmenting a simple heuristic, not replacing it.
+`Next.js 14` `TypeScript` `Tailwind CSS` `Prisma` `PostgreSQL (Neon)` `AWS Comprehend` `Vercel`
 
-Flip it on by setting `USE_AWS_COMPREHEND=true` and filling in AWS credentials
-in your environment variables. Nothing else in the app changes.
+## Features
 
-## Local setup
+- Natural language ticket submission → automatic category + priority classification
+- Rule-based classifier by default, with a pluggable AWS Comprehend sentiment-analysis layer for enhanced urgency detection
+- Priority-sorted triage queue with live status/assignee updates
+- Full REST API (`/api/tickets`, `/api/tickets/[id]`, `/api/classify`) alongside the frontend in a single deployment
+- Zero-cost infrastructure: serverless Postgres on Neon, hosting on Vercel, no idle billing
+
+## Architecture
+Next.js (Vercel)
+├─ Frontend — React pages (queue, new ticket, ticket detail)
+├─ API routes — serverless functions (Node.js runtime)
+│ ├─ POST /api/tickets → classify + create
+│ ├─ GET /api/tickets → list, filterable by status/priority/category
+│ ├─ PATCH /api/tickets/:id → update status/priority/assignee
+│ └─ POST /api/classify → standalone classifier endpoint
+├─ Prisma ORM → PostgreSQL (Neon, serverless)
+└─ Classifier — rule-based keyword matching, optional AWS Comprehend sentiment boost
+
+## Getting Started
 
 ```bash
 npm install
-cp .env.example .env   # fill in DATABASE_URL at minimum
-npx prisma db push     # creates the Ticket table
+cp .env.example .env      # add your Neon DATABASE_URL
+npx prisma db push        # creates the Ticket table
 npm run dev
 ```
 
 Visit `http://localhost:3000`.
 
-## Setting up the database (Neon PostgreSQL)
+## Deployment
 
-1. Go to [neon.tech](https://neon.tech) → sign up (GitHub login is fastest) →
-   **Create a project**. Pick a region close to you.
-2. On the project dashboard, copy the **connection string** shown — it's
-   already in the `postgresql://...` format Prisma expects.
-3. Paste it into `.env` as `DATABASE_URL`.
-4. Run `npx prisma db push` to create the schema.
+Deployed as a single Vercel project — frontend and API routes ship together. Database is [Neon](https://neon.tech) (serverless Postgres, permanent free tier). AWS Comprehend integration is optional and off by default (`USE_AWS_COMPREHEND=false`), so the project runs at zero cost with no AWS account required.
 
-That's it — no VPC, no security groups, no public-access toggles, and
-nothing that expires. This is also the exact same `DATABASE_URL` you'll set
-in Vercel's environment variables for the deployed app.
+## Possible Extensions
 
-### If you'd rather use AWS RDS anyway (e.g. to have it as a resume bullet)
-
-Steps: AWS Console → RDS → Create database → PostgreSQL → Free tier template
-→ set master credentials → enable public access + a security group allowing
-inbound 5432 → build `DATABASE_URL` from the endpoint → `npx prisma db push`.
-Just know this instance bills ~$12–15/month once the 12-month free tier
-ends, whether or not you're using it — either budget for that or move
-`DATABASE_URL` to Neon later (one env var change, no code change, one-click
-redeploy on Vercel).
-
-## Deploying to Vercel
-
-1. Push this repo to GitHub.
-2. In Vercel: **New Project** → import the repo.
-3. Add environment variables (from `.env.example`) in the Vercel project
-   settings: `DATABASE_URL`, and if using Comprehend, `AWS_REGION`,
-   `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `USE_AWS_COMPREHEND`.
-4. Deploy. Vercel runs `prisma generate && next build` automatically (see the
-   `build` script in `package.json`).
-
-Frontend and backend ship as a single Vercel deployment — the API routes
-under `src/app/api/**` run as serverless functions alongside the pages.
-
-## Project structure
-
-```
-src/
-  app/
-    page.tsx                 # triage queue (dashboard)
-    new/page.tsx              # new ticket form
-    tickets/[id]/page.tsx      # ticket detail + status controls
-    api/
-      tickets/route.ts         # GET list, POST create (+ auto-classify)
-      tickets/[id]/route.ts    # GET one, PATCH update
-      classify/route.ts        # standalone classifier endpoint
-  lib/
-    prisma.ts                 # Prisma client singleton
-    classifier.ts              # rule-based + AWS Comprehend classification
-  components/
-    Badges.tsx                 # priority/status/category UI
-prisma/
-  schema.prisma                # Ticket model
-```
-
-## Possible extensions
-
-- SNS/Lambda alert when a CRITICAL ticket sits unassigned past an SLA window.
-- S3-backed file attachments on tickets (client for this is already a
-  dependency — `@aws-sdk/client-s3`).
-- Swap the rule-based fallback for a small trained classifier if you want a
-  from-scratch ML story instead of a managed AWS service.
+- SNS/Lambda alert when a critical ticket sits unassigned past an SLA window
+- S3-backed file attachments on tickets
+- Swap the rule-based fallback for a trained ML classifier
